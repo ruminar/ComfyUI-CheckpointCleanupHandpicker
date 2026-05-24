@@ -10,6 +10,14 @@
 
 ## 追加
 
+`Checkpoint List Selector`ノードを追加。
+
+- Checkpointの一覧表示
+- Checkpointに設定されているステータスを確認
+- プレビューへの接続の他、画像生成フローへの接続をサポート。
+
+## 機能
+
 ### Checkpoint Cleanup Review ノード
 
 - `CheckpointNameCycler` と連携し、現在選択されている Checkpoint の情報を受け取れるようにしました。
