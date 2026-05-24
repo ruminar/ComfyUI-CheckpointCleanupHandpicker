@@ -161,7 +161,9 @@ python delete_reserved_checkpoints.py
 
 また `ckpt_name` を使うことで、対応するワークフローでは選択中のCheckpointを画像生成側にも渡せます。
 
-状態表示:
+<img width="1215" height="796" alt="image" src="https://github.com/user-attachments/assets/20a63817-eb5e-4e52-b5ff-1499c73cd75d" />
+
+### 状態表示
 
 - 💛 お気に入り済み
 - 🗑 削除予約済み
@@ -180,4 +182,10 @@ python delete_reserved_checkpoints.py
 
 ## 宣伝画像
 
-<img width="1024" height="1536" alt="CheckpointCleanupHandpicker" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
+<img width="1024" height="1536" alt="CheckpointCleanupHandpicker宣伝画像" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
+<br/>
+CheckpointListSelector宣伝画像
+<img width="1448" height="1086" alt="CheckpointListSelector宣伝画像" src="https://github.com/user-attachments/assets/6c91580a-81eb-4215-9e81-bd7bb4f9d534" />
+※ 画像生成ワークフローの開始ノードとする場合は、`ckpt_name`を`CheckpointLoaderSimple`につないでください。（そこだけ宣伝画像の図が間違ってます）
+
+
