@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# Persistent user state
+data/checkpoint_favorites.json
+
+# local logs / generated files
+*.log
