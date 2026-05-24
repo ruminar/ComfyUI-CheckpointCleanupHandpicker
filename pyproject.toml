@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-checkpoint-cleanup-handpicker"
+version = "0.1.0"
+description = "A checkpoint cleanup handpicker workflow for ComfyUI. Review generated images, mark favorite checkpoints, and create a safe delete queue script."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+[project.urls]
+Repository = "https://github.com/ruminar/ComfyUI-CheckpointCleanupHandpicker"
+
+[tool.comfy]
+PublisherId = "ruminar"
+DisplayName = "Checkpoint Cleanup Handpicker"
+Icon = ""
