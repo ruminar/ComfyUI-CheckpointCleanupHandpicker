@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import math
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -27,6 +28,8 @@ MAX_TILE_LONG_SIDE = 512
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_CHECKPOINT_SUFFIX = ".safetensors"
 CYCLER_CLASS_TYPE = "CheckpointNameCycler"
+SELECTOR_CLASS_TYPE = "CheckpointListSelector"
+ALLOWED_SOURCE_CLASS_TYPES = {CYCLER_CLASS_TYPE, SELECTOR_CLASS_TYPE}
 
 NODE_DIR = Path(__file__).resolve().parent
 DATA_DIR = NODE_DIR / "data"
@@ -108,6 +111,73 @@ def _is_valid_checkpoint_relpath(value: str) -> bool:
     if not value.lower().endswith(ALLOWED_CHECKPOINT_SUFFIX):
         return False
     return True
+
+
+def _ckpt_name_safe_from_relpath(value: str) -> str:
+    relpath = _normalize_relpath(value)
+    if relpath.lower().endswith(ALLOWED_CHECKPOINT_SUFFIX):
+        relpath = relpath[: -len(ALLOWED_CHECKPOINT_SUFFIX)]
+    return re.sub(r"[^0-9A-Za-z_-]+", "_", relpath).strip("_")
+
+
+def _checkpoint_list_items() -> list[dict]:
+    try:
+        names = folder_paths.get_filename_list("checkpoints")
+    except Exception:
+        logger.exception("Failed to list checkpoints.")
+        names = []
+
+    favorites = _load_favorites().get("favorites", {})
+    active_delete = _active_delete_reservations()
+
+    items = []
+    seen = set()
+    for name in names:
+        relpath = _normalize_relpath(name)
+        if relpath in seen or not _is_valid_checkpoint_relpath(relpath):
+            continue
+        seen.add(relpath)
+
+        is_favorite = relpath in favorites
+        is_reserved = relpath in active_delete
+        if is_favorite:
+            status = "favorite"
+            icon = "💛"
+        elif is_reserved:
+            status = "reserved"
+            icon = "🗑"
+        else:
+            status = "normal"
+            icon = "  "
+
+        label = f"{icon} {relpath}" if icon.strip() else f"   {relpath}"
+        items.append({
+            "ckpt_name_str": relpath,
+            "ckpt_name_safe": _ckpt_name_safe_from_relpath(relpath),
+            "label": label,
+            "status": status,
+            "is_favorite": is_favorite,
+            "is_reserved": is_reserved,
+        })
+
+    items.sort(key=lambda item: item["ckpt_name_str"].lower())
+    return items
+
+
+def _select_checkpoint_value(value: str | None) -> tuple[str, str]:
+    relpath = _normalize_relpath(value or "")
+    items = _checkpoint_list_items()
+
+    if _is_valid_checkpoint_relpath(relpath):
+        for item in items:
+            if item["ckpt_name_str"] == relpath:
+                return item["ckpt_name_str"], item["ckpt_name_safe"]
+
+    if items:
+        first = items[0]
+        return first["ckpt_name_str"], first["ckpt_name_safe"]
+
+    return "", ""
 
 
 def _checkpoint_roots():
@@ -569,7 +639,7 @@ def _send_progress(unique_id, ckpt_name_str, ckpt_name_safe, message, value=0, t
     _send_review_payload(payload)
 
 
-def _validate_cycler_connections(prompt, unique_id: str):
+def _validate_checkpoint_source_connections(prompt, unique_id: str):
     if prompt is None or unique_id is None:
         raise ValueError("This node requires PROMPT and UNIQUE_ID hidden inputs for safety validation.")
     me = prompt.get(str(unique_id))
@@ -581,18 +651,23 @@ def _validate_cycler_connections(prompt, unique_id: str):
     for name in expected_inputs:
         value = inputs.get(name)
         if not isinstance(value, list) or len(value) < 2:
-            raise ValueError(f"{name} must be connected from {CYCLER_CLASS_TYPE}.")
+            allowed = ", ".join(sorted(ALLOWED_SOURCE_CLASS_TYPES))
+            raise ValueError(f"{name} must be connected from one of: {allowed}.")
         links.append(value)
+
     source_node_ids = {str(link[0]) for link in links}
     if len(source_node_ids) != 1:
-        raise ValueError("ckpt_name_str and ckpt_name_safe must come from the same CheckpointNameCycler node.")
+        raise ValueError("ckpt_name_str and ckpt_name_safe must come from the same checkpoint source node.")
+
     source_node_id = next(iter(source_node_ids))
     source_node = prompt.get(source_node_id)
     if not source_node:
-        raise ValueError("Source CheckpointNameCycler node was not found in prompt.")
+        raise ValueError("Source checkpoint node was not found in prompt.")
+
     source_class = source_node.get("class_type")
-    if source_class != CYCLER_CLASS_TYPE:
-        raise ValueError(f"This node only works when connected to {CYCLER_CLASS_TYPE}.")
+    if source_class not in ALLOWED_SOURCE_CLASS_TYPES:
+        allowed = ", ".join(sorted(ALLOWED_SOURCE_CLASS_TYPES))
+        raise ValueError(f"This node only works when connected to one of: {allowed}.")
     return source_node_id
 
 
@@ -633,6 +708,34 @@ def _create_review_payload(ckpt_name_str: str, ckpt_name_safe: str, search_direc
     return payload
 
 
+class CheckpointListSelector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "checkpoint": ("STRING", {"default": ""}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("ckpt_name", "ckpt_name_str", "ckpt_name_safe")
+    FUNCTION = "select"
+    CATEGORY = "checkpoint/cleanup"
+
+    @classmethod
+    def IS_CHANGED(cls, checkpoint="", unique_id=None):
+        return float("nan")
+
+    def select(self, checkpoint="", unique_id=None):
+        ckpt_name_str, ckpt_name_safe = _select_checkpoint_value(checkpoint)
+        # ckpt_name is provided for workflows that can accept a checkpoint name as a string input.
+        # ckpt_name_str / ckpt_name_safe remain compatible with Checkpoint Cleanup Review.
+        return (ckpt_name_str, ckpt_name_str, ckpt_name_safe)
+
+
 class CheckpointCleanupReview:
     @classmethod
     def INPUT_TYPES(cls):
@@ -660,13 +763,45 @@ class CheckpointCleanupReview:
         return float("nan")
 
     def review(self, ckpt_name_str, ckpt_name_safe, search_directory=None, unique_id=None, prompt=None):
-        _validate_cycler_connections(prompt, unique_id)
+        _validate_checkpoint_source_connections(prompt, unique_id)
         if not _is_valid_checkpoint_relpath(ckpt_name_str):
-            raise ValueError("ckpt_name_str must be a relative .safetensors path from CheckpointNameCycler.")
+            raise ValueError("ckpt_name_str must be a relative .safetensors path from a supported checkpoint source node.")
         _write_delete_script()
         payload = _create_review_payload(ckpt_name_str, ckpt_name_safe, search_directory, unique_id=unique_id)
         _send_review_payload(payload)
         return ()
+
+
+@PromptServer.instance.routes.get("/checkpoint_cleanup_handpicker/list_checkpoints")
+async def list_checkpoints(request):
+    selected = request.query.get("selected", "")
+    items = _checkpoint_list_items()
+    selected_relpath = _normalize_relpath(selected) if selected else ""
+    if selected_relpath and not any(item["ckpt_name_str"] == selected_relpath for item in items):
+        selected_relpath = ""
+    if not selected_relpath and items:
+        selected_relpath = items[0]["ckpt_name_str"]
+
+    return web.json_response({
+        "ok": True,
+        "items": items,
+        "checkpoints": [item["ckpt_name_str"] for item in items],
+        "selected": selected_relpath,
+        "count": len(items),
+    })
+
+
+@PromptServer.instance.routes.post("/checkpoint_cleanup_handpicker/refresh_checkpoint_widgets")
+async def refresh_checkpoint_widgets(request):
+    # This endpoint intentionally returns the latest checkpoint list and status.
+    # The frontend updates CheckpointLoaderSimple and other checkpoint widgets from /object_info.
+    items = _checkpoint_list_items()
+    return web.json_response({
+        "ok": True,
+        "items": items,
+        "checkpoints": [item["ckpt_name_str"] for item in items],
+        "count": len(items),
+    })
 
 
 async def _read_json_request(request):
