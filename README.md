@@ -44,6 +44,9 @@ git clone https://github.com/ruminar/ComfyUI-CheckpointCleanupHandpicker.git
 
 ### 📦 Checkpoint Cleanup Review
 
+このノードは [`ComfyUI-CheckpointNameCycler`](https://github.com/ruminar/ComfyUI-CheckpointNameCycler)** と組み合わせて使うことを前提にしておる。
+先に導入しておくれなのじゃ。
+
 **[`ComfyUI-CheckpointNameCycler`](https://github.com/ruminar/ComfyUI-CheckpointNameCycler)** から出力される以下の2本のワイヤーをそのまま接続してくりゃれ。
 
 ```text
@@ -72,7 +75,7 @@ ckpt_name_safe ──> 画像検索のキーとして使う、ファイル名か
 ### 🕵️‍♂️ 画像を掘り起こすレーダー (Preview search)
 
 - 対象フォルダは、サブディレクトリも含めて再帰検索するぞ。
-- 「新しいフォルダ」「フォルダ内の新しい画像」優先的にチェックするから、直近の成果を見逃さん！
+- 「新しいフォルダ」「フォルダ内の新しい画像」を優先的にチェックするから、直近の成果を見逃さん！
 - ファイル名に `ckpt_name_safe` が含まれる画像を探し出し、64件見つかった時点でスマートに探索を打ち切るのじゃ。
 - 対象拡張子は `.png`, `.jpg`, `.jpeg`, `.webp` じゃ。
 
@@ -128,7 +131,6 @@ temp/
 
 ```bash
 python delete_reserved_checkpoints.py
-
 ```
 
 - 実行すると、スクリプト内でも **「本当に消してもよいな？（y/N）」** と1件ずつお伺いを立ててくる。
