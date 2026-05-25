@@ -180,6 +180,21 @@ python delete_reserved_checkpoints.py
   - 一応スクロールバーのドラッグやマウスホイールの回転にも対応しておるが、結局このボタンの連打が速いのじゃ（爆）
 
 
+## 0.3.0 Checkpoint Status Tagger
+
+おぬし！　おぬしは画像生成のバッチを回しながら、
+
+- このCheckpoint、いまいちじゃん、後で確認して削除予約いれないとな
+- 朝になったけど棚卸が面倒くさいな
+- そもそも削除しようと思ったCheckpointの名前を忘れたぞ、画像をもう一回見ないと思い出せん！
+- なんでバッチ実行中にお気に入りとか削除予定とか選べないんだよ、100個もCheckpointあったらそんなの覚えてらんないよ！
+
+とか思ってはおらんかったか？
+
+`Checkpoint Status Tagger` は、そんなおぬしのために、KSampler や Preview Tap で現在流れている画像を見ながら、その場で 💛 / 🗑 を付けられるカスタムノードじゃ。
+
+Tagger はプレビュー画像探索を行わず、Checkpoint の状態操作に専念するｚｐ。
+
 ## 宣伝画像
 
 <img width="1024" height="1536" alt="CheckpointCleanupHandpicker宣伝画像" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
