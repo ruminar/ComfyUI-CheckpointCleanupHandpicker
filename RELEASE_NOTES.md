@@ -1,12 +1,8 @@
 # Release Notes
 
-## 0.1.0
-
-初回リリースじゃ！
+## 0.2.0
 
 `Checkpoint Cleanup Handpicker` は、生成済み画像を確認しながら Checkpoint を厳選し、💛お気に入り登録や 🗑削除予約を安全に行うための ComfyUI カスタムノードです。
-
----
 
 ## 追加
 
@@ -125,15 +121,6 @@ y/N 確認後、y の場合のみ削除
 
 ## 注意
 
-* 0.1.0 では `CheckpointNameCycler` との連携を前提にしています。
-* 今後のバージョンでは、Checkpoint 一覧から手動選択できるノードの追加を検討しています。
 * `temp` ディレクトリを削除すると、削除予約情報も消えます。
-
----
-
-## Known limitations
-
-* Checkpoint の一覧選択UIはまだありません。
-* 0.1.0 では `ckpt_name_str` と `ckpt_name_safe` を出力できる外部ノードとの接続が必要です。
 * 複数の checkpoint root に同じ相対パスの Checkpoint がある場合、削除予約は安全のため無効になります。
 
