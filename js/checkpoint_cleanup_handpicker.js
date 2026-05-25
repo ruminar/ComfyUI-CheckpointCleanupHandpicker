@@ -857,7 +857,6 @@ function ensureTaggerSize(node) {
 function currentTaggerPayload(node) {
     return {
         ckpt_name_str: node.__cctState?.ckpt_name_str ?? getInputValue(node, "ckpt_name_str"),
-        ckpt_name_safe: node.__cctState?.ckpt_name_safe ?? getInputValue(node, "ckpt_name_safe"),
     };
 }
 
@@ -949,7 +948,6 @@ function shortTaggerText(text, maxLength = 54) {
 function drawTagger(node, ctx) {
     if (node.flags?.collapsed) return;
     hideWidgetByName(node, "ckpt_name_str");
-    hideWidgetByName(node, "ckpt_name_safe");
     const state = node.__cctState ?? {};
     ctx.save();
     drawTaggerButtons(node, ctx);
@@ -977,7 +975,6 @@ function setupTaggerNode(nodeType) {
     nodeType.prototype.onNodeCreated = function () {
         const result = origOnNodeCreated ? origOnNodeCreated.apply(this, arguments) : undefined;
         hideWidgetByName(this, "ckpt_name_str");
-        hideWidgetByName(this, "ckpt_name_safe");
         ensureTaggerSize(this);
         return result;
     };

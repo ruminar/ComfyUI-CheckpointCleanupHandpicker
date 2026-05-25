@@ -614,8 +614,9 @@ def _status_for(ckpt_name_str: str, ckpt_name_safe: str, search_directory: str |
 
 
 
-def _tagger_status_for(ckpt_name_str: str, ckpt_name_safe: str):
+def _tagger_status_for(ckpt_name_str: str):
     relpath = _normalize_relpath(ckpt_name_str) if isinstance(ckpt_name_str, str) else ""
+    ckpt_name_safe = _ckpt_name_safe_from_relpath(relpath) if relpath else ""
     favorite_db = _load_favorites()
     is_favorite = relpath in favorite_db.get("favorites", {})
     active_delete = _active_delete_reservations()
@@ -665,8 +666,8 @@ def _tagger_status_for(ckpt_name_str: str, ckpt_name_safe: str):
     }
 
 
-def _create_tagger_payload(ckpt_name_str: str, ckpt_name_safe: str, unique_id=None):
-    payload = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+def _create_tagger_payload(ckpt_name_str: str, unique_id=None):
+    payload = _tagger_status_for(ckpt_name_str)
     payload.update({
         "node": int(unique_id) if unique_id is not None else None,
         "message": "",
@@ -710,14 +711,13 @@ def _send_progress(unique_id, ckpt_name_str, ckpt_name_safe, message, value=0, t
     _send_review_payload(payload)
 
 
-def _validate_checkpoint_source_connections(prompt, unique_id: str):
+def _validate_checkpoint_source_connections(prompt, unique_id: str, expected_inputs=("ckpt_name_str", "ckpt_name_safe")):
     if prompt is None or unique_id is None:
         raise ValueError("This node requires PROMPT and UNIQUE_ID hidden inputs for safety validation.")
     me = prompt.get(str(unique_id))
     if not me:
         raise ValueError("Could not find this node in prompt for safety validation.")
     inputs = me.get("inputs", {})
-    expected_inputs = ("ckpt_name_str", "ckpt_name_safe")
     links = []
     for name in expected_inputs:
         value = inputs.get(name)
@@ -804,7 +804,6 @@ class CheckpointStatusTagger:
         return {
             "required": {
                 "ckpt_name_str": ("STRING", {"forceInput": True}),
-                "ckpt_name_safe": ("STRING", {"forceInput": True}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -818,12 +817,12 @@ class CheckpointStatusTagger:
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, ckpt_name_str, ckpt_name_safe, unique_id=None, prompt=None):
+    def IS_CHANGED(cls, ckpt_name_str, unique_id=None, prompt=None):
         return float("nan")
 
-    def tag(self, ckpt_name_str, ckpt_name_safe, unique_id=None, prompt=None):
-        _validate_checkpoint_source_connections(prompt, unique_id)
-        payload = _create_tagger_payload(ckpt_name_str, ckpt_name_safe, unique_id=unique_id)
+    def tag(self, ckpt_name_str, unique_id=None, prompt=None):
+        _validate_checkpoint_source_connections(prompt, unique_id, expected_inputs=("ckpt_name_str",))
+        payload = _create_tagger_payload(ckpt_name_str, unique_id=unique_id)
         _send_tagger_payload(payload)
         return ()
 
@@ -1041,19 +1040,18 @@ async def cancel_delete_checkpoint(request):
 async def tagger_favorite_checkpoint(request):
     data = await _read_json_request(request)
     ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
-    ckpt_name_safe = data.get("ckpt_name_safe", "")
     resolved = _resolve_checkpoint_unique(ckpt_name_str)
     if not resolved:
-        status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+        status = _tagger_status_for(ckpt_name_str)
         return _json_error("Checkpoint could not be resolved uniquely.", **status)
     active = _active_delete_reservations()
     if ckpt_name_str in active:
-        status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+        status = _tagger_status_for(ckpt_name_str)
         return _json_error("Checkpoint is already delete-reserved. Cancel the reservation first.", **status)
     db = _load_favorites()
     db["favorites"][ckpt_name_str] = {
         "ckpt_name_str": ckpt_name_str,
-        "ckpt_name_safe": ckpt_name_safe,
+        "ckpt_name_safe": _ckpt_name_safe_from_relpath(ckpt_name_str),
         "resolved_path": resolved["path"],
         "root": resolved["root"],
         "file_size": resolved["file_size"],
@@ -1062,7 +1060,7 @@ async def tagger_favorite_checkpoint(request):
         "last_seen_at": _now_iso(),
     }
     _save_favorites(db)
-    status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+    status = _tagger_status_for(ckpt_name_str)
     return _json_ok(**status)
 
 
@@ -1070,11 +1068,10 @@ async def tagger_favorite_checkpoint(request):
 async def tagger_unfavorite_checkpoint(request):
     data = await _read_json_request(request)
     ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
-    ckpt_name_safe = data.get("ckpt_name_safe", "")
     db = _load_favorites()
     db.get("favorites", {}).pop(ckpt_name_str, None)
     _save_favorites(db)
-    status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+    status = _tagger_status_for(ckpt_name_str)
     return _json_ok(**status)
 
 
@@ -1082,8 +1079,7 @@ async def tagger_unfavorite_checkpoint(request):
 async def tagger_reserve_delete_checkpoint(request):
     data = await _read_json_request(request)
     ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
-    ckpt_name_safe = data.get("ckpt_name_safe", "")
-    status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+    status = _tagger_status_for(ckpt_name_str)
     if status["is_favorite"]:
         return _json_error("Favorite checkpoints cannot be delete-reserved.", **status)
     if status["is_reserved"]:
@@ -1096,7 +1092,7 @@ async def tagger_reserve_delete_checkpoint(request):
         "type": "reserve",
         "id": f"{int(time.time())}_{uuid.uuid4().hex[:12]}",
         "ckpt_name_str": ckpt_name_str,
-        "ckpt_name_safe": ckpt_name_safe,
+        "ckpt_name_safe": _ckpt_name_safe_from_relpath(ckpt_name_str),
         "resolved_path": resolved["path"],
         "root": resolved["root"],
         "file_size": resolved["file_size"],
@@ -1105,7 +1101,7 @@ async def tagger_reserve_delete_checkpoint(request):
     }
     _append_delete_queue(record)
     _write_delete_script()
-    status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+    status = _tagger_status_for(ckpt_name_str)
     return _json_ok(**status)
 
 
@@ -1113,10 +1109,9 @@ async def tagger_reserve_delete_checkpoint(request):
 async def tagger_cancel_delete_checkpoint(request):
     data = await _read_json_request(request)
     ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
-    ckpt_name_safe = data.get("ckpt_name_safe", "")
     active = _active_delete_reservations()
     if ckpt_name_str not in active:
-        status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+        status = _tagger_status_for(ckpt_name_str)
         return _json_error("Checkpoint is not delete-reserved.", **status)
     record = {
         "version": 1,
@@ -1127,5 +1122,5 @@ async def tagger_cancel_delete_checkpoint(request):
     }
     _append_delete_queue(record)
     _write_delete_script()
-    status = _tagger_status_for(ckpt_name_str, ckpt_name_safe)
+    status = _tagger_status_for(ckpt_name_str)
     return _json_ok(**status)
