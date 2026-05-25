@@ -138,6 +138,54 @@ python delete_reserved_checkpoints.py
 - 最後の最後までおぬしの意思を尊重する、完璧な安全フローじゃ！
   - うまく動かない時はパスの設定を確認しておくれなのじゃ。
 
+## 0.2.0: Checkpoint List Selector
+
+おぬし！　おぬしはCheckpointの選択画面を見ながら、
+
+- このCheckpoint、お気に入りに入れてたっけ？
+- このCheckpoint、削除予定に入れてたっけ？
+- なんでプレビューしないとステータスが判んないんだよ？
+- しかもCheckpointが1行しか表示されなくて、100件以上Checkpointがあったら、選択するのが超・面倒くさいんですけど！
+
+とか思ってはおらんかったか？
+
+`Checkpoint List Selector` は、Checkpointに設定したステータスを、一覧の状態で確認できるCheckpoint選択ノードです。
+
+### 出力される力
+
+- `ckpt_name`
+- `ckpt_name_str`
+- `ckpt_name_safe`
+
+`Checkpoint Cleanup Review` と接続すると、`CheckpointNameCycler` を使わずに手動で Checkpoint を選んで棚卸しできます。
+
+また `ckpt_name` を使うことで、対応するワークフローでは選択中のCheckpointを画像生成側にも渡せます。
+
+<img width="1215" height="796" alt="image" src="https://github.com/user-attachments/assets/20a63817-eb5e-4e52-b5ff-1499c73cd75d" />
+
+### 状態表示
+
+- 💛 お気に入り済み
+- 🗑 削除予約済み
+- 通常表示は未判定
+
+### ボタン説明
+
+- `🔄 Refresh All`: Checkpoint一覧の再取得、および Checkpointの設定ステータス読み込み
+  - 削除バッチを使用したり、エクスプローラでCheckpointを配置するなど、ディレクトリ構成を変えた場合はこちらのボタンを押すのじゃ！
+- `List Only`: Checkpointの設定ステータスだけ読み込むぞ。
+  - Checkpoint Cleanup Reviewで、お気に入りの状態などを変更したら、このボタンを押してCheckpointのステータスを取り込んでおくれ。
+- `▲`: リストを上にスクロールするぞ！
+- `▼`: リストを下にスクロールするぞ！
+  - 一応スクロールバーのドラッグやマウスホイールの回転にも対応しておるが、結局このボタンの連打が速いのじゃ（爆）
+
+
 ## 宣伝画像
 
-<img width="1024" height="1536" alt="CheckpointCleanupHandpicker" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
+<img width="1024" height="1536" alt="CheckpointCleanupHandpicker宣伝画像" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
+<br/>
+CheckpointListSelector宣伝画像
+<img width="1448" height="1086" alt="CheckpointListSelector宣伝画像" src="https://github.com/user-attachments/assets/6c91580a-81eb-4215-9e81-bd7bb4f9d534" />
+※ 画像生成ワークフローの開始ノードとする場合は、`ckpt_name`を`CheckpointLoaderSimple`につないでください。（そこだけ宣伝画像の図が間違ってます）
+
+
