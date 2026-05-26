@@ -1,16 +1,14 @@
 # Release Notes
 
-## 0.2.0
+## 0.3.0
 
 `Checkpoint Cleanup Handpicker` は、生成済み画像を確認しながら Checkpoint を厳選し、💛お気に入り登録や 🗑削除予約を安全に行うための ComfyUI カスタムノードです。
 
 ## 追加
 
-`Checkpoint List Selector`ノードを追加。
+### Checkpoint Status Tagger ノード
 
-- Checkpointの一覧表示
-- Checkpointに設定されているステータスを確認
-- プレビューへの接続の他、画像生成フローへの接続をサポート。
+- KSampler や Preview Tap で現在流れている画像を見ながら、その場で 💛 / 🗑 の変更可能にした。
 
 ## 機能
 
@@ -49,6 +47,13 @@
 - ノード下部は画像プレビュー専用エリアとして使います。
 - ノードタイトルに現在の Checkpoint 名と状態を表示します。
 
+### Checkpoint List Selector ノード
+
+- Checkpointの一覧表示
+- Checkpointに設定されているステータスを確認
+- プレビューへの接続の他、画像生成フローへの接続をサポート。
+
+
 ### お気に入り機能
 
 - Checkpoint をお気に入りとして登録できるようにしました。
@@ -58,7 +63,7 @@
 ```text
 ComfyUI/custom_nodes/ComfyUI-CheckpointCleanupHandpicker/data/
 └─ checkpoint_favorites.json
-````
+```
 
 ### 削除予約機能
 

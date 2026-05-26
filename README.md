@@ -180,6 +180,21 @@ python delete_reserved_checkpoints.py
   - 一応スクロールバーのドラッグやマウスホイールの回転にも対応しておるが、結局このボタンの連打が速いのじゃ（爆）
 
 
+## 0.3.0 Checkpoint Status Tagger
+
+おぬし！　おぬしは画像生成のバッチを回しながら、
+
+- このCheckpoint、いまいちじゃん、後で確認して削除予約いれないとな
+- 朝になったけど棚卸が面倒くさいな
+- そもそも削除しようと思ったCheckpointの名前を忘れたぞ、画像をもう一回見ないと思い出せん！
+- なんでバッチ実行中にお気に入りとか削除予定とか選べないんだよ、100個もCheckpointあったらそんなの覚えてらんないよ！
+
+とか思ってはおらんかったか？
+
+`Checkpoint Status Tagger` は、そんなおぬしのために、KSampler や Preview Tap で現在流れている画像を見ながら、その場で 💛 / 🗑 を付けられるカスタムノードじゃ。
+
+Tagger はプレビュー画像探索を行わず、Checkpoint の状態操作に専念するｚｐ。
+
 ## 宣伝画像
 
 <img width="1024" height="1536" alt="CheckpointCleanupHandpicker宣伝画像" src="https://github.com/user-attachments/assets/0477526a-a750-4e77-900f-72c1244b380c" />
@@ -187,5 +202,7 @@ python delete_reserved_checkpoints.py
 CheckpointListSelector宣伝画像
 <img width="1448" height="1086" alt="CheckpointListSelector宣伝画像" src="https://github.com/user-attachments/assets/6c91580a-81eb-4215-9e81-bd7bb4f9d534" />
 ※ 画像生成ワークフローの開始ノードとする場合は、`ckpt_name`を`CheckpointLoaderSimple`につないでください。（そこだけ宣伝画像の図が間違ってます）
-
-
+<br/>
+CheckpointStatusTagger宣伝画像
+<img width="1491" height="1055" alt="CheckpointStatusTagger宣伝画像" src="https://github.com/user-attachments/assets/26874b5b-1409-4be3-b292-65af8f5b52d8" />
+※ CheckpointListSelectorへの反映は、`List Only`ボタンを押してください。(自動で反映する機能は将来実装予定です)

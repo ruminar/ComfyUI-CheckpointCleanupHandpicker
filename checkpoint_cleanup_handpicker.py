@@ -18,6 +18,7 @@ from server import PromptServer
 logger = logging.getLogger(__name__)
 
 EVENT_NAME = "ruminar.checkpoint_cleanup_review"
+TAGGER_EVENT_NAME = "ruminar.checkpoint_status_tagger"
 
 JPEG_QUALITY = 80
 JPEG_OPTIMIZE = False
@@ -612,6 +613,77 @@ def _status_for(ckpt_name_str: str, ckpt_name_safe: str, search_directory: str |
     }
 
 
+
+def _tagger_status_for(ckpt_name_str: str):
+    relpath = _normalize_relpath(ckpt_name_str) if isinstance(ckpt_name_str, str) else ""
+    ckpt_name_safe = _ckpt_name_safe_from_relpath(relpath) if relpath else ""
+    favorite_db = _load_favorites()
+    is_favorite = relpath in favorite_db.get("favorites", {})
+    active_delete = _active_delete_reservations()
+    is_reserved = relpath in active_delete
+    resolved = _resolve_checkpoint_unique(relpath)
+    candidates = _resolve_checkpoint_candidates(relpath)
+
+    if not _is_valid_checkpoint_relpath(relpath):
+        status = "invalid"
+        title = f"⚠ invalid: {relpath or '(empty)'}"
+    elif resolved is None and len(candidates) == 0:
+        status = "unresolved"
+        title = f"❓ unresolved: {relpath}"
+    elif resolved is None and len(candidates) > 1:
+        status = "ambiguous"
+        title = f"⚠ ambiguous: {relpath}"
+    elif is_favorite:
+        status = "favorite"
+        title = f"💛 {relpath}"
+    elif is_reserved:
+        status = "reserved"
+        title = f"🗑 {relpath}"
+    else:
+        status = "ready"
+        title = relpath
+
+    can_favorite = resolved is not None and not is_reserved
+    can_unfavorite = is_favorite
+    can_reserve_delete = resolved is not None and not is_favorite and not is_reserved
+    can_cancel_delete = is_reserved
+    return {
+        "ckpt_name_str": relpath,
+        "ckpt_name_safe": ckpt_name_safe,
+        "resolved": resolved,
+        "candidate_count": len(candidates),
+        "is_favorite": is_favorite,
+        "is_reserved": is_reserved,
+        "status": status,
+        "title": title,
+        "can_favorite": can_favorite,
+        "can_unfavorite": can_unfavorite,
+        "can_reserve_delete": can_reserve_delete,
+        "can_cancel_delete": can_cancel_delete,
+        "active_delete": active_delete.get(relpath),
+        "delete_queue_path": str(_delete_queue_path()),
+        "delete_script_path": str(_delete_script_path()),
+    }
+
+
+def _create_tagger_payload(ckpt_name_str: str, unique_id=None):
+    payload = _tagger_status_for(ckpt_name_str)
+    payload.update({
+        "node": int(unique_id) if unique_id is not None else None,
+        "message": "",
+    })
+    return payload
+
+
+def _send_tagger_payload(payload: dict):
+    server = PromptServer.instance
+    client_id = getattr(server, "client_id", None)
+    if client_id:
+        server.send_sync(TAGGER_EVENT_NAME, payload, client_id)
+    else:
+        server.send_sync(TAGGER_EVENT_NAME, payload)
+
+
 def _send_review_payload(payload: dict):
     server = PromptServer.instance
     client_id = getattr(server, "client_id", None)
@@ -639,14 +711,13 @@ def _send_progress(unique_id, ckpt_name_str, ckpt_name_safe, message, value=0, t
     _send_review_payload(payload)
 
 
-def _validate_checkpoint_source_connections(prompt, unique_id: str):
+def _validate_checkpoint_source_connections(prompt, unique_id: str, expected_inputs=("ckpt_name_str", "ckpt_name_safe")):
     if prompt is None or unique_id is None:
         raise ValueError("This node requires PROMPT and UNIQUE_ID hidden inputs for safety validation.")
     me = prompt.get(str(unique_id))
     if not me:
         raise ValueError("Could not find this node in prompt for safety validation.")
     inputs = me.get("inputs", {})
-    expected_inputs = ("ckpt_name_str", "ckpt_name_safe")
     links = []
     for name in expected_inputs:
         value = inputs.get(name)
@@ -706,6 +777,54 @@ def _create_review_payload(ckpt_name_str: str, ckpt_name_safe: str, search_direc
             })
     progress(MAX_IMAGES, MAX_IMAGES, "Preview ready.")
     return payload
+
+
+
+class CheckpointStatusFilter:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "filter_mode": (["all", "favorites_only", "unreviewed_only", "reserved_only", "exclude_reserved"], {"default": "all"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("status_filter",)
+    FUNCTION = "select"
+    CATEGORY = "checkpoint/cleanup"
+
+    def select(self, filter_mode="all"):
+        return (str(filter_mode or "all"),)
+
+
+class CheckpointStatusTagger:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ckpt_name_str": ("STRING", {"forceInput": True}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "prompt": "PROMPT",
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "tag"
+    CATEGORY = "checkpoint/cleanup"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, ckpt_name_str, unique_id=None, prompt=None):
+        return float("nan")
+
+    def tag(self, ckpt_name_str, unique_id=None, prompt=None):
+        _validate_checkpoint_source_connections(prompt, unique_id, expected_inputs=("ckpt_name_str",))
+        payload = _create_tagger_payload(ckpt_name_str, unique_id=unique_id)
+        _send_tagger_payload(payload)
+        return ()
 
 
 class CheckpointListSelector:
@@ -914,4 +1033,94 @@ async def cancel_delete_checkpoint(request):
     _append_delete_queue(record)
     _write_delete_script()
     status = _status_for(ckpt_name_str, ckpt_name_safe, search_directory)
+    return _json_ok(**status)
+
+
+@PromptServer.instance.routes.post("/checkpoint_cleanup_handpicker/tagger_favorite")
+async def tagger_favorite_checkpoint(request):
+    data = await _read_json_request(request)
+    ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
+    resolved = _resolve_checkpoint_unique(ckpt_name_str)
+    if not resolved:
+        status = _tagger_status_for(ckpt_name_str)
+        return _json_error("Checkpoint could not be resolved uniquely.", **status)
+    active = _active_delete_reservations()
+    if ckpt_name_str in active:
+        status = _tagger_status_for(ckpt_name_str)
+        return _json_error("Checkpoint is already delete-reserved. Cancel the reservation first.", **status)
+    db = _load_favorites()
+    db["favorites"][ckpt_name_str] = {
+        "ckpt_name_str": ckpt_name_str,
+        "ckpt_name_safe": _ckpt_name_safe_from_relpath(ckpt_name_str),
+        "resolved_path": resolved["path"],
+        "root": resolved["root"],
+        "file_size": resolved["file_size"],
+        "mtime": resolved["mtime"],
+        "favorited_at": _now_iso(),
+        "last_seen_at": _now_iso(),
+    }
+    _save_favorites(db)
+    status = _tagger_status_for(ckpt_name_str)
+    return _json_ok(**status)
+
+
+@PromptServer.instance.routes.post("/checkpoint_cleanup_handpicker/tagger_unfavorite")
+async def tagger_unfavorite_checkpoint(request):
+    data = await _read_json_request(request)
+    ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
+    db = _load_favorites()
+    db.get("favorites", {}).pop(ckpt_name_str, None)
+    _save_favorites(db)
+    status = _tagger_status_for(ckpt_name_str)
+    return _json_ok(**status)
+
+
+@PromptServer.instance.routes.post("/checkpoint_cleanup_handpicker/tagger_reserve_delete")
+async def tagger_reserve_delete_checkpoint(request):
+    data = await _read_json_request(request)
+    ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
+    status = _tagger_status_for(ckpt_name_str)
+    if status["is_favorite"]:
+        return _json_error("Favorite checkpoints cannot be delete-reserved.", **status)
+    if status["is_reserved"]:
+        return _json_error("Checkpoint is already delete-reserved.", **status)
+    if not status["resolved"]:
+        return _json_error("Checkpoint could not be resolved uniquely.", **status)
+    resolved = status["resolved"]
+    record = {
+        "version": 1,
+        "type": "reserve",
+        "id": f"{int(time.time())}_{uuid.uuid4().hex[:12]}",
+        "ckpt_name_str": ckpt_name_str,
+        "ckpt_name_safe": _ckpt_name_safe_from_relpath(ckpt_name_str),
+        "resolved_path": resolved["path"],
+        "root": resolved["root"],
+        "file_size": resolved["file_size"],
+        "mtime": resolved["mtime"],
+        "reserved_at": _now_iso(),
+    }
+    _append_delete_queue(record)
+    _write_delete_script()
+    status = _tagger_status_for(ckpt_name_str)
+    return _json_ok(**status)
+
+
+@PromptServer.instance.routes.post("/checkpoint_cleanup_handpicker/tagger_cancel_delete")
+async def tagger_cancel_delete_checkpoint(request):
+    data = await _read_json_request(request)
+    ckpt_name_str = _normalize_relpath(data.get("ckpt_name_str", ""))
+    active = _active_delete_reservations()
+    if ckpt_name_str not in active:
+        status = _tagger_status_for(ckpt_name_str)
+        return _json_error("Checkpoint is not delete-reserved.", **status)
+    record = {
+        "version": 1,
+        "type": "cancel",
+        "id": active[ckpt_name_str].get("id"),
+        "ckpt_name_str": ckpt_name_str,
+        "cancelled_at": _now_iso(),
+    }
+    _append_delete_queue(record)
+    _write_delete_script()
+    status = _tagger_status_for(ckpt_name_str)
     return _json_ok(**status)

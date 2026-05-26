@@ -5,6 +5,8 @@ const EXTENSION_NAME = "ruminar.checkpoint_cleanup_handpicker";
 const EVENT_NAME = "ruminar.checkpoint_cleanup_review";
 const REVIEW_CLASS = "CheckpointCleanupReview";
 const SELECTOR_CLASS = "CheckpointListSelector";
+const TAGGER_CLASS = "CheckpointStatusTagger";
+const TAGGER_EVENT_NAME = "ruminar.checkpoint_status_tagger";
 
 const MIN_NODE_WIDTH = 420;
 const MIN_NODE_HEIGHT = 440;
@@ -232,6 +234,21 @@ api.addEventListener(EVENT_NAME, ({ detail }) => {
         app.graph.setDirtyCanvas(true, true);
     };
     img.src = `data:image/${detail.format};base64,${detail.image}`;
+});
+
+api.addEventListener(TAGGER_EVENT_NAME, ({ detail }) => {
+    const nodeId = Number(detail.node);
+    if (!Number.isFinite(nodeId)) return;
+
+    const node = app.graph?.getNodeById(nodeId);
+    if (!node) return;
+
+    node.__cctState = { ...(node.__cctState ?? {}), ...detail };
+    node.__cctMessage = detail.message || null;
+    if (detail.title) {
+        node.title = detail.title;
+    }
+    app.graph.setDirtyCanvas(true, true);
 });
 
 
@@ -819,6 +836,176 @@ function setupReviewNode(nodeType) {
     };
 }
 
+
+function hideWidgetByName(node, name) {
+    const w = node.widgets?.find((widget) => widget.name === name);
+    if (!w) return;
+    w.type = "hidden";
+    w.computeSize = () => [0, -4];
+}
+
+const TAGGER_MIN_WIDTH = 420;
+const TAGGER_MIN_HEIGHT = 150;
+const TAGGER_BODY_Y = 48;
+
+function ensureTaggerSize(node) {
+    if (!node.size) return;
+    node.size[0] = Math.max(node.size[0], TAGGER_MIN_WIDTH);
+    node.size[1] = Math.max(node.size[1], TAGGER_MIN_HEIGHT);
+}
+
+function currentTaggerPayload(node) {
+    return {
+        ckpt_name_str: node.__cctState?.ckpt_name_str ?? getInputValue(node, "ckpt_name_str"),
+    };
+}
+
+async function postTaggerAction(node, action) {
+    try {
+        const response = await api.fetchApi(`/checkpoint_cleanup_handpicker/${action}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(currentTaggerPayload(node)),
+        });
+        const result = await response.json();
+        node.__cctMessage = result.ok ? "OK" : (result.error || "Action failed.");
+        node.__cctState = { ...(node.__cctState ?? {}), ...result };
+        if (result.title) {
+            node.title = result.title;
+        }
+        app.graph.setDirtyCanvas(true, true);
+    } catch (error) {
+        node.__cctMessage = String(error);
+        app.graph.setDirtyCanvas(true, true);
+    }
+}
+
+function taggerButtonDefs(node) {
+    const s = node.__cctState ?? {};
+    return [
+        { label: "💛 お気に入り", action: "tagger_favorite", enabled: !!s.can_favorite },
+        { label: "解除", action: "tagger_unfavorite", enabled: !!s.can_unfavorite },
+        { label: "🗑 削除予約", action: "tagger_reserve_delete", enabled: !!s.can_reserve_delete },
+        { label: "予約取消", action: "tagger_cancel_delete", enabled: !!s.can_cancel_delete },
+    ];
+}
+
+function taggerButtonRects(node) {
+    const defs = taggerButtonDefs(node);
+    const x = Math.min(TOP_CONTROL_X, Math.max(PREVIEW_MARGIN, node.size[0] * 0.38));
+    const y = TOP_CONTROL_Y;
+    const w = Math.max(1, node.size[0] - x - PREVIEW_MARGIN);
+    const h = BUTTON_BAR_HEIGHT;
+    const count = defs.length;
+    const buttonWidth = Math.max(70, (w - BUTTON_GAP * (count - 1)) / count);
+    return defs.map((button, index) => ({
+        ...button,
+        x: x + index * (buttonWidth + BUTTON_GAP),
+        y,
+        w: buttonWidth,
+        h,
+    }));
+}
+
+function drawTaggerButtons(node, ctx) {
+    const rects = taggerButtonRects(node);
+    ctx.save();
+    for (const r of rects) {
+        ctx.fillStyle = r.enabled ? "rgba(80, 120, 180, 0.65)" : "rgba(80, 80, 80, 0.35)";
+        ctx.strokeStyle = r.enabled ? "rgba(180, 220, 255, 0.75)" : "rgba(160, 160, 160, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(r.x, r.y, r.w, r.h, 6);
+        } else {
+            ctx.rect(r.x, r.y, r.w, r.h);
+        }
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = r.enabled ? "#FFFFFF" : "#999999";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h / 2);
+    }
+    ctx.restore();
+}
+
+function hitTaggerButton(node, pos) {
+    for (const r of taggerButtonRects(node)) {
+        if (pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h) {
+            return r;
+        }
+    }
+    return null;
+}
+
+function shortTaggerText(text, maxLength = 54) {
+    const value = String(text ?? "");
+    return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function drawTagger(node, ctx) {
+    if (node.flags?.collapsed) return;
+    hideWidgetByName(node, "ckpt_name_str");
+    const state = node.__cctState ?? {};
+    ctx.save();
+    drawTaggerButtons(node, ctx);
+    const infoX = PREVIEW_MARGIN;
+    const infoY = TAGGER_BODY_Y;
+    const infoW = Math.max(1, node.size[0] - PREVIEW_MARGIN * 2);
+    const infoH = Math.max(1, node.size[1] - infoY - PREVIEW_MARGIN);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+    ctx.fillRect(infoX, infoY, infoW, infoH);
+    ctx.fillStyle = "#E8E8E8";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    const statusText = state.is_favorite ? "💛 Favorite" : (state.is_reserved ? "🗑 Reserved" : (state.status ? state.status : "unreviewed"));
+    ctx.fillText(`Status: ${statusText}`, infoX + 8, infoY + 18);
+    ctx.fillText(`Checkpoint: ${shortTaggerText(state.ckpt_name_str || getInputValue(node, "ckpt_name_str"))}`, infoX + 8, infoY + 38);
+    const msg = node.__cctMessage || state.message || "Use this node while watching KSampler / Preview Tap output.";
+    ctx.fillStyle = node.__cctMessage ? "#FFD28A" : "#CFCFCF";
+    ctx.fillText(shortTaggerText(msg, 80), infoX + 8, infoY + 58);
+    ctx.restore();
+}
+
+function setupTaggerNode(nodeType) {
+    const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function () {
+        const result = origOnNodeCreated ? origOnNodeCreated.apply(this, arguments) : undefined;
+        hideWidgetByName(this, "ckpt_name_str");
+        ensureTaggerSize(this);
+        return result;
+    };
+
+    const origOnDrawBackground = nodeType.prototype.onDrawBackground;
+    nodeType.prototype.onDrawBackground = function (ctx) {
+        if (origOnDrawBackground) {
+            origOnDrawBackground.apply(this, arguments);
+        }
+        drawTagger(this, ctx);
+    };
+
+    const origOnMouseDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function (event, pos, canvas) {
+        const button = hitTaggerButton(this, pos);
+        if (button) {
+            if (button.enabled) {
+                postTaggerAction(this, button.action);
+            } else {
+                this.__cctMessage = "This action is currently disabled.";
+                app.graph.setDirtyCanvas(true, true);
+            }
+            return true;
+        }
+        if (origOnMouseDown) {
+            return origOnMouseDown.apply(this, arguments);
+        }
+        return false;
+    };
+}
+
 app.registerExtension({
     name: EXTENSION_NAME,
 
@@ -831,6 +1018,11 @@ app.registerExtension({
         if (nodeData.name === SELECTOR_CLASS) {
             installSelectorWheelListener();
             setupSelectorNode(nodeType);
+            return;
+        }
+
+        if (nodeData.name === TAGGER_CLASS) {
+            setupTaggerNode(nodeType);
             return;
         }
     },
