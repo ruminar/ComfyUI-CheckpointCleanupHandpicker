@@ -1,3 +1,34 @@
+# ⚠️ Project moved / 後継プロジェクトのお知らせ
+
+This project has been succeeded by **ComfyUI-CheckpointHandpickerSuite**.
+
+👉 https://github.com/ruminar/ComfyUI-CheckpointHandpickerSuite
+
+`ComfyUI-CheckpointHandpickerSuite` includes the cleanup/review workflow from this project and adds:
+
+- Checkpoint Name Cycler
+- Checkpoint List Selector
+- Checkpoint Status Tagger
+- Ephemeral Preview
+- ImageDir Preview
+- Safe delete reservation workflow
+
+This repository is kept for archive/reference purposes.
+
+---
+
+# ⚠️ 後継プロジェクトのお知らせ
+
+このプロジェクトは、後継版である **ComfyUI-CheckpointHandpickerSuite** に統合・発展しました。
+
+👉 https://github.com/ruminar/ComfyUI-CheckpointHandpickerSuite
+
+新しいSuiteでは、このプロジェクトのCheckpoint整理・削除予約ワークフローに加えて、Checkpoint巡回、別タブレビュー、ステータスタグ付け、プレビュー機能などが追加されています。
+
+このリポジトリは、過去版の参照用として残しています。
+
+---
+
 # 🧹 Checkpoint Cleanup Handpicker for ComfyUI
 
 おぬし！　おぬしはoutputに出力された結果画像を見ながら、
